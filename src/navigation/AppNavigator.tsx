@@ -6,6 +6,7 @@ import { Text } from 'react-native';
 import { useColors, useTheme } from '../services/theme';
 
 import HomeScreen from '../screens/HomeScreen';
+import MachinesScreen from '../screens/MachinesScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 import ChatScreen from '../screens/ChatScreen';
 import ActivityScreen from '../screens/ActivityScreen';
@@ -16,6 +17,7 @@ import RunHistoryScreen from '../screens/RunHistoryScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 
 const Tab = createBottomTabNavigator();
+const HomeStack = createNativeStackNavigator();
 const ChatStack = createNativeStackNavigator();
 const ExecuteStack = createNativeStackNavigator();
 const ActivityStack = createNativeStackNavigator();
@@ -23,6 +25,16 @@ const ActivityStack = createNativeStackNavigator();
 function useStackScreenOptions() {
   const c = useColors();
   return { headerStyle: { backgroundColor: c.bgElevated }, headerTintColor: c.text, headerShadowVisible: false } as const;
+}
+
+function HomeNavigator() {
+  const opts = useStackScreenOptions();
+  return (
+    <HomeStack.Navigator screenOptions={opts}>
+      <HomeStack.Screen name="HomeMain" component={HomeScreen} options={{ headerShown: false }} />
+      <HomeStack.Screen name="Machines" component={MachinesScreen} options={{ title: 'Machines' }} />
+    </HomeStack.Navigator>
+  );
 }
 
 function ChatNavigator() {
@@ -89,7 +101,7 @@ export default function AppNavigator() {
           tabBarStyle: { backgroundColor: c.bgElevated, borderTopColor: c.border },
         })}
       >
-        <Tab.Screen name="Home" component={HomeScreen} />
+        <Tab.Screen name="Home" component={HomeNavigator} />
         <Tab.Screen name="Chat" component={ChatNavigator} />
         <Tab.Screen name="Execute" component={ExecuteNavigator} />
         <Tab.Screen name="Activity" component={ActivityNavigator} />

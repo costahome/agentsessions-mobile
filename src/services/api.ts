@@ -309,6 +309,34 @@ export async function getStatus() {
   return sendAndPoll({ type: 'get-status' }, 15000);
 }
 
+// --- Machines (cross-machine browse + install) ---
+
+export interface MachineCatalogAgent { id: string; name: string; description?: string }
+export interface MachineCatalogManager { id: string; name: string; org?: string[] }
+export interface Machine {
+  machineId: string;
+  hostname: string | null;
+  isSelf: boolean;
+  isLeader: boolean;
+  alive: boolean;
+  updatedAt: string | null;
+  agentCount: number;
+  managerCount: number;
+  agents: MachineCatalogAgent[];
+  managers: MachineCatalogManager[];
+}
+
+export async function listMachines(): Promise<{ machines: Machine[]; selfId: string | null }> {
+  return sendAndPoll({ type: 'list-machines' });
+}
+
+export async function installFromMachine(
+  machineId: string,
+  items: { type: 'agent' | 'manager'; id: string }[]
+): Promise<{ ok: boolean; installed: string[]; skipped: string[]; warnings: string[] }> {
+  return sendAndPoll({ type: 'install-from-machine', payload: { machineId, items } }, 120000);
+}
+
 export async function checkConnection(): Promise<boolean> {
   try {
     const configured = await isConfigured();

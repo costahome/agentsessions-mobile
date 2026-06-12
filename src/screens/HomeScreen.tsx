@@ -89,12 +89,15 @@ export default function HomeScreen({ navigation }: any) {
         </View>
       </View>
 
-      <LeaderBanner leader={status?.leader} styles={styles} c={c} />
+      <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('Machines')}>
+        <LeaderBanner leader={status?.leader} styles={styles} c={c} />
+      </TouchableOpacity>
 
       <View style={styles.quickActions}>
         <QuickAction icon="💬" label="Chat" onPress={() => navigation.navigate('Chat')} styles={styles} />
         <QuickAction icon="▶️" label="Execute" onPress={() => navigation.navigate('Execute')} styles={styles} />
         <QuickAction icon="📊" label="Activity" onPress={() => navigation.navigate('Activity')} styles={styles} />
+        <QuickAction icon="🖥️" label="Machines" onPress={() => navigation.navigate('Machines')} styles={styles} />
       </View>
 
       <View style={styles.statsGrid}>
