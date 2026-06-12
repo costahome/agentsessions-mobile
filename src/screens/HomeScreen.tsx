@@ -89,6 +89,8 @@ export default function HomeScreen({ navigation }: any) {
         </View>
       </View>
 
+      <LeaderBanner leader={status?.leader} styles={styles} c={c} />
+
       <View style={styles.quickActions}>
         <QuickAction icon="💬" label="Chat" onPress={() => navigation.navigate('Chat')} styles={styles} />
         <QuickAction icon="▶️" label="Execute" onPress={() => navigation.navigate('Execute')} styles={styles} />
@@ -134,6 +136,57 @@ export default function HomeScreen({ navigation }: any) {
   );
 }
 
+function LeaderBanner({ leader, styles, c }: any) {
+  // Older servers may not send leader info — show a neutral "unknown" notice
+  // so the user is never misled into thinking events are handled.
+  if (!leader) {
+    return (
+      <View style={[styles.leaderBanner, { backgroundColor: c.surface, borderColor: c.border }]}>
+        <Text style={[styles.leaderDot, { color: c.textMuted }]}>○</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.leaderTitle}>Leader status unknown</Text>
+          <Text style={styles.leaderSub}>This server build doesn't report leader health.</Text>
+        </View>
+      </View>
+    );
+  }
+
+  const active = !!leader.eventsActive;
+  const standalone = leader.syncEnabled === false;
+  const tint = active ? c.success : c.danger;
+  const bg = active ? 'rgba(22,163,74,0.10)' : 'rgba(220,38,38,0.12)';
+  const border = active ? 'rgba(22,163,74,0.35)' : 'rgba(220,38,38,0.45)';
+
+  let title: string;
+  if (!active) title = '⚠️ No active leader';
+  else if (standalone) title = '● Events active · Standalone';
+  else if (leader.isLeader) title = '● Events active · This machine is leader';
+  else title = '● Events active';
+
+  // Which machine is in charge of events, and which one we're talking to.
+  const connectedTo = leader.thisHostname || '—';
+  let sub: string;
+  if (!active) {
+    sub = `No machine is handling scheduled events. Connected to ${connectedTo}.`;
+  } else if (standalone || leader.isLeader) {
+    sub = `Connected to ${connectedTo}`;
+  } else {
+    const lh = leader.leaderHostname || 'unknown';
+    const age = leader.staleSeconds != null ? ` · heartbeat ${leader.staleSeconds}s ago` : '';
+    sub = `Leader: ${lh}${age} · Connected to ${connectedTo}`;
+  }
+
+  return (
+    <View style={[styles.leaderBanner, { backgroundColor: bg, borderColor: border }]}>
+      <Text style={[styles.leaderDot, { color: tint }]}>{active ? '●' : '▲'}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.leaderTitle, { color: tint }]}>{title}</Text>
+        <Text style={styles.leaderSub}>{sub}</Text>
+      </View>
+    </View>
+  );
+}
+
 function QuickAction({ icon, label, onPress, styles }: any) {
   return (
     <TouchableOpacity style={styles.quickAction} onPress={onPress}>
@@ -168,6 +221,10 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   header: { fontSize: 22, fontWeight: '700', color: c.text },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   badgeText: { fontSize: 11, fontWeight: '700' },
+  leaderBanner: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 16 },
+  leaderDot: { fontSize: 16, marginRight: 10, fontWeight: '700' },
+  leaderTitle: { fontSize: 14, fontWeight: '700', color: c.text },
+  leaderSub: { fontSize: 12, color: c.textMuted, marginTop: 2 },
   quickActions: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   quickAction: { flex: 1, backgroundColor: c.surface, borderRadius: 12, borderWidth: 1, borderColor: c.border, paddingVertical: 16, alignItems: 'center' },
   qaIcon: { fontSize: 26, marginBottom: 6 },
