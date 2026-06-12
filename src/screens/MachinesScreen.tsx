@@ -109,8 +109,11 @@ export default function MachinesScreen() {
 
       {machines.map((m) => {
         const isOpen = !!expanded[m.machineId];
+        // `self` = the machine currently answering this device (the install target).
+        // The effective listener is your explicit choice, or that responder by default.
         const self = m.isSelf || m.machineId === selfId;
-        const isActiveListener = listenerId ? m.machineId === listenerId : false;
+        const effectiveListenerId = listenerId || selfId;
+        const isActiveListener = !!effectiveListenerId && m.machineId === effectiveListenerId;
         return (
           <View key={m.machineId} style={[styles.card, isActiveListener && { borderColor: c.accent }]}>
             <TouchableOpacity
@@ -121,7 +124,6 @@ export default function MachinesScreen() {
               <View style={{ flex: 1 }}>
                 <View style={styles.titleRow}>
                   <Text style={styles.machineName}>{m.hostname || m.machineId}</Text>
-                  {self && <Pill text="this machine" color={c.textMuted} c={c} />}
                   <Pill text={m.alive ? '● online' : '○ offline'} color={m.alive ? c.success : c.textMuted} c={c} />
                 </View>
                 <Text style={styles.meta}>
