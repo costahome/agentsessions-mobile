@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useColors, Palette } from '../services/theme';
-import { listMachines, installFromMachine, Machine } from '../services/api';
+import { listMachines, installFromMachine, getListenerMachineId, setListenerMachineId, Machine } from '../services/api';
 import { useFocusEffect } from '@react-navigation/native';
 
 function timeAgo(ts: string | null): string {
@@ -26,13 +26,15 @@ export default function MachinesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [installing, setInstalling] = useState<string | null>(null);
+  const [listenerId, setListenerId] = useState<string | null>(null);
 
   const load = async () => {
     try {
       setError(null);
-      const res = await listMachines();
+      const [res, lid] = await Promise.all([listMachines(), getListenerMachineId()]);
       setMachines(res?.machines || []);
       setSelfId(res?.selfId ?? null);
+      setListenerId(lid);
     } catch (e: any) {
       setError(e?.message || 'Failed to load machines');
     } finally {
@@ -46,6 +48,12 @@ export default function MachinesScreen() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  };
+
+  const doListen = async (machine: Machine) => {
+    await setListenerMachineId(machine.machineId);
+    setListenerId(machine.machineId);
+    Alert.alert('Listener changed', `This device now listens to ${machine.hostname || machine.machineId}. Its agents, managers, chats and tasks are what you'll see across the app.`);
   };
 
   const doInstall = async (machine: Machine, type: 'agent' | 'manager', id: string, label: string) => {
@@ -82,8 +90,9 @@ export default function MachinesScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}
     >
       <Text style={styles.intro}>
-        Each machine owns its own agents and managers. Browse another machine and install its
-        agents/managers into this machine's namespace.
+        Pick which machine this device listens to — its agents, managers, chats and tasks become
+        what you see across the app. Expand a machine to install its agents/managers into another
+        machine's namespace.
       </Text>
 
       {error && (
@@ -101,8 +110,9 @@ export default function MachinesScreen() {
       {machines.map((m) => {
         const isOpen = !!expanded[m.machineId];
         const self = m.isSelf || m.machineId === selfId;
+        const isActiveListener = listenerId ? m.machineId === listenerId : m.isLeader;
         return (
-          <View key={m.machineId} style={styles.card}>
+          <View key={m.machineId} style={[styles.card, isActiveListener && { borderColor: c.accent }]}>
             <TouchableOpacity
               style={styles.cardHeader}
               onPress={() => setExpanded((p) => ({ ...p, [m.machineId]: !p[m.machineId] }))}
@@ -122,6 +132,18 @@ export default function MachinesScreen() {
               </View>
               <Text style={styles.chevron}>{isOpen ? '▲' : '▼'}</Text>
             </TouchableOpacity>
+
+            <View style={styles.listenBar}>
+              {isActiveListener ? (
+                <View style={styles.listeningTag}>
+                  <Text style={styles.listeningText}>● Listening here</Text>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.listenBtn} onPress={() => doListen(m)} activeOpacity={0.7}>
+                  <Text style={styles.listenText}>Set as listener</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
             {isOpen && (
               <View style={styles.body}>
@@ -210,6 +232,11 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   machineName: { fontSize: 16, fontWeight: '700', color: c.text },
   meta: { fontSize: 12, color: c.textMuted, marginTop: 4 },
   chevron: { fontSize: 12, color: c.textMuted, marginLeft: 8 },
+  listenBar: { paddingHorizontal: 14, paddingBottom: 12, alignItems: 'flex-start' },
+  listenBtn: { borderWidth: 1, borderColor: c.accent, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 7 },
+  listenText: { color: c.accent, fontWeight: '700', fontSize: 13 },
+  listeningTag: { backgroundColor: c.accentSoft, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  listeningText: { color: c.success, fontWeight: '700', fontSize: 13 },
   body: { borderTopWidth: 1, borderTopColor: c.border, paddingHorizontal: 14, paddingBottom: 12 },
   sectionTitle: { fontSize: 11, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 12, marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },

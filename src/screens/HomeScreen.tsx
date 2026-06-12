@@ -166,17 +166,17 @@ function LeaderBanner({ leader, styles, c }: any) {
   else if (leader.isLeader) title = '● Events active · This machine is leader';
   else title = '● Events active';
 
-  // Which machine is in charge of events, and which one we're talking to.
+  // Which machine is in charge of events, and which one we're listening to.
   const connectedTo = leader.thisHostname || '—';
   let sub: string;
   if (!active) {
-    sub = `No machine is handling scheduled events. Connected to ${connectedTo}.`;
+    sub = `No machine is handling scheduled events. Listening to ${connectedTo}.`;
   } else if (standalone || leader.isLeader) {
-    sub = `Connected to ${connectedTo}`;
+    sub = `Listening to ${connectedTo}`;
   } else {
     const lh = leader.leaderHostname || 'unknown';
     const age = leader.staleSeconds != null ? ` · heartbeat ${leader.staleSeconds}s ago` : '';
-    sub = `Leader: ${lh}${age} · Connected to ${connectedTo}`;
+    sub = `Leader: ${lh}${age} · Listening to ${connectedTo}`;
   }
 
   return (

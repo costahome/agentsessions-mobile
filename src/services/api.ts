@@ -15,6 +15,24 @@ import { Platform } from 'react-native';
 
 const CONFIG_KEY = '@agent_supervisor_relay_config';
 const TOKEN_KEY = '@agent_supervisor_device_token';
+const LISTENER_KEY = '@agent_supervisor_listener_machine';
+
+// The machine this device "listens" to — its agents/managers/chats/tasks are what
+// the user sees and interacts with. null means "default" (the server leader),
+// represented on the wire by the '__leader__' sentinel.
+let listenerMachineId: string | null | undefined; // undefined = not yet loaded
+
+export async function getListenerMachineId(): Promise<string | null> {
+  if (listenerMachineId !== undefined) return listenerMachineId;
+  listenerMachineId = (await AsyncStorage.getItem(LISTENER_KEY)) || null;
+  return listenerMachineId;
+}
+
+export async function setListenerMachineId(id: string | null): Promise<void> {
+  listenerMachineId = id;
+  if (id) await AsyncStorage.setItem(LISTENER_KEY, id);
+  else await AsyncStorage.removeItem(LISTENER_KEY);
+}
 
 export interface RelayConfig {
   relayUrl: string;       // e.g. "https://relay-agentsessions.lemondune-11ff5970.westus2.azurecontainerapps.io"
@@ -85,7 +103,8 @@ let seqCounter = 0;
  */
 async function sendAndPoll(body: Record<string, any>, timeoutMs = 60000): Promise<any> {
   const correlationId = `${await getSenderId()}-${Date.now()}-${++seqCounter}`;
-  const message = { ...body, correlationId };
+  const targetMachineId = (await getListenerMachineId()) || '__leader__';
+  const message = { ...body, correlationId, targetMachineId };
 
   // Send to relay
   const sendResp = await relayFetch('/api/messages/send', {
@@ -205,7 +224,8 @@ export async function sendAndStream(
   timeoutMs = 180000
 ): Promise<any> {
   const correlationId = `${await getSenderId()}-${Date.now()}-${++seqCounter}`;
-  const message = { ...body, correlationId };
+  const targetMachineId = (await getListenerMachineId()) || '__leader__';
+  const message = { ...body, correlationId, targetMachineId };
 
   const sendResp = await relayFetch('/api/messages/send', {
     method: 'POST',
