@@ -110,7 +110,7 @@ export default function MachinesScreen() {
       {machines.map((m) => {
         const isOpen = !!expanded[m.machineId];
         const self = m.isSelf || m.machineId === selfId;
-        const isActiveListener = listenerId ? m.machineId === listenerId : m.isLeader;
+        const isActiveListener = listenerId ? m.machineId === listenerId : false;
         return (
           <View key={m.machineId} style={[styles.card, isActiveListener && { borderColor: c.accent }]}>
             <TouchableOpacity
@@ -121,7 +121,6 @@ export default function MachinesScreen() {
               <View style={{ flex: 1 }}>
                 <View style={styles.titleRow}>
                   <Text style={styles.machineName}>{m.hostname || m.machineId}</Text>
-                  {m.isLeader && <Pill text="Leader" color={c.success} c={c} />}
                   {self && <Pill text="this machine" color={c.textMuted} c={c} />}
                   <Pill text={m.alive ? '● online' : '○ offline'} color={m.alive ? c.success : c.textMuted} c={c} />
                 </View>
