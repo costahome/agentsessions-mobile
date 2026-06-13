@@ -26,28 +26,49 @@ export default function ExecuteScreen({ navigation, route }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
+  const [errored, setErrored] = useState(false);
+  const focusedRef = React.useRef(false);
+  const retryRef = React.useRef<any>(null);
 
   const loadData = async () => {
-    try {
-      const [a, t, ch] = await Promise.all([listAssignments(), listTasks(), listChains()]);
-      setAssignments(a?.assignments || []);
-      setTasks(t?.tasks || []);
-      setChains(ch?.chains || []);
-    } catch {}
-    finally {
-      setLoading(false);
-      setLoaded(true);
-    }
+    // Use allSettled so a single slow/failed call doesn't blank the whole page,
+    // and so we can tell "listener unreachable" apart from "genuinely empty".
+    const [a, t, ch] = await Promise.allSettled([listAssignments(), listTasks(), listChains()]);
+    const anyOk = [a, t, ch].some((r) => r.status === 'fulfilled');
+    if (a.status === 'fulfilled') setAssignments(a.value?.assignments || []);
+    if (t.status === 'fulfilled') setTasks(t.value?.tasks || []);
+    if (ch.status === 'fulfilled') setChains(ch.value?.chains || []);
+    // If every call failed, the listener is (re)connecting — flag it and keep
+    // any previously-loaded data on screen rather than showing an empty state.
+    setErrored(!anyOk);
+    setLoading(false);
+    setLoaded(true);
+    return anyOk;
   };
 
+  const loadWithRetry = useCallback(async () => {
+    if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null; }
+    const ok = await loadData();
+    // Auto-retry with backoff while the screen is focused and the listener is
+    // still unreachable (e.g. relay reconnecting after a server restart).
+    if (!ok && focusedRef.current) {
+      retryRef.current = setTimeout(() => { if (focusedRef.current) loadWithRetry(); }, 4000);
+    }
+  }, []);
+
   useFocusEffect(useCallback(() => {
+    focusedRef.current = true;
     if (!loaded) setLoading(true);
-    loadData();
-  }, [loaded]));
+    loadWithRetry();
+    return () => {
+      focusedRef.current = false;
+      if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null; }
+    };
+  }, [loaded, loadWithRetry]));
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadData();
+    await loadWithRetry();
     setRefreshing(false);
   };
 
@@ -155,6 +176,22 @@ export default function ExecuteScreen({ navigation, route }: any) {
     );
   }
 
+  const totalItems = assignments.length + tasks.length + chains.length;
+  if (errored && totalItems === 0) {
+    return (
+      <View style={styles.loadingWrap}>
+        <ActivityIndicator size="large" color={c.accent} />
+        <Text style={styles.loadingText}>Reconnecting to your listener…</Text>
+        <Text style={styles.reconnectHint}>
+          Can't reach the machine handling this device yet. This can take a moment after a restart.
+        </Text>
+        <TouchableOpacity style={styles.retryBtn} onPress={onRefresh}>
+          <Text style={styles.retryBtnText}>Retry now</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <SectionList
       style={styles.container}
@@ -211,8 +248,11 @@ export default function ExecuteScreen({ navigation, route }: any) {
 
 const makeStyles = (c: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.bg },
-  loadingWrap: { flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingWrap: { flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
   loadingText: { color: c.textMuted, fontSize: 14 },
+  reconnectHint: { color: c.textMuted, fontSize: 12, textAlign: 'center', lineHeight: 18, marginTop: -4 },
+  retryBtn: { marginTop: 6, backgroundColor: c.accent, borderRadius: 8, paddingHorizontal: 18, paddingVertical: 10 },
+  retryBtnText: { color: c.accentFg, fontWeight: '700', fontSize: 13 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', marginTop: 14, marginBottom: 8 },
   sectionTitle: { fontSize: 13, fontWeight: '700', color: c.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
   countBadge: { marginLeft: 8, backgroundColor: c.accentSoft, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },

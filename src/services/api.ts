@@ -167,11 +167,11 @@ export async function listAgents() {
 }
 
 export async function listAssignments() {
-  return sendAndPoll({ type: 'list-assignments' });
+  return sendAndPoll({ type: 'list-assignments' }, 15000);
 }
 
 export async function listTasks() {
-  return sendAndPoll({ type: 'list-tasks' });
+  return sendAndPoll({ type: 'list-tasks' }, 15000);
 }
 
 export async function runAssignment(managerId: string, assignmentId: string) {
@@ -342,7 +342,7 @@ export interface ChainSummary {
 }
 
 export async function listChains(): Promise<{ chains: ChainSummary[] }> {
-  return sendAndPoll({ type: 'list-chains' });
+  return sendAndPoll({ type: 'list-chains' }, 15000);
 }
 
 /**
