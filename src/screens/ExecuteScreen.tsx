@@ -160,7 +160,7 @@ export default function ExecuteScreen({ navigation, route }: any) {
 
   const assignmentsSection = { title: 'Assignments', count: assignments.length, data: assignments };
   const tasksSection = { title: 'Tasks', count: tasks.length, data: tasks };
-  const chainsSection = { title: 'Chains', count: chains.length, data: chains };
+  const chainsSection = { title: 'Flows', count: chains.length, data: chains };
   const sections = route?.params?.initialTab === 'tasks'
     ? [tasksSection, chainsSection, assignmentsSection]
     : route?.params?.initialTab === 'chains'
@@ -207,7 +207,7 @@ export default function ExecuteScreen({ navigation, route }: any) {
       )}
       renderItem={({ item, section }) => {
         const isAssignment = section.title === 'Assignments';
-        const isChain = section.title === 'Chains';
+        const isChain = section.title === 'Flows';
         const running = item.status === 'running';
         const onCardPress = isChain ? () => openChainHistory(item)
           : isAssignment ? () => openAssignmentHistory(item)
@@ -240,7 +240,7 @@ export default function ExecuteScreen({ navigation, route }: any) {
           </View>
         );
       }}
-      ListEmptyComponent={<Text style={styles.empty}>No connected assignments, chains, or tasks</Text>}
+      ListEmptyComponent={<Text style={styles.empty}>No connected assignments, flows, or tasks</Text>}
       stickySectionHeadersEnabled={false}
     />
   );

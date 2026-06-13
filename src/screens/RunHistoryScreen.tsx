@@ -86,7 +86,7 @@ export default function RunHistoryScreen({ navigation, route }: any) {
         const detail = await getChainRun(item.id);
         navigation.navigate('RunDetail', { item: { ...item, name, output: detail?.output || '' } });
       } catch (e: any) {
-        navigation.navigate('RunDetail', { item: { ...item, name, output: `Failed to load chain output: ${e.message}` } });
+        navigation.navigate('RunDetail', { item: { ...item, name, output: `Failed to load flow output: ${e.message}` } });
       } finally {
         setOpeningId(null);
       }

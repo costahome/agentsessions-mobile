@@ -130,7 +130,7 @@ export default function HomeScreen({ navigation }: any) {
           onPress={() => navigation.navigate('Execute', { screen: 'ExecuteMain', params: { initialTab: 'assignments' } })} styles={styles} />
         <StatBox value={status?.taskCount ?? status?.agentCount ?? '—'} label="Tasks" icon="⚡"
           onPress={() => navigation.navigate('Execute', { screen: 'ExecuteMain', params: { initialTab: 'tasks' } })} styles={styles} />
-        <StatBox value={status?.chainCount ?? '—'} label="Chains" icon="🔗"
+        <StatBox value={status?.chainCount ?? '—'} label="Flows" icon="🔗"
           onPress={() => navigation.navigate('Execute', { screen: 'ExecuteMain', params: { initialTab: 'chains' } })} styles={styles} />
       </View>
 
