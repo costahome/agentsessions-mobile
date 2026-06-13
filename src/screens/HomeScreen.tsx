@@ -56,6 +56,27 @@ export default function HomeScreen({ navigation }: any) {
     );
   }
 
+  if (connState === 'listener-unreachable') {
+    return (
+      <View style={styles.center}>
+        <View style={styles.disconnectCard}>
+          <Text style={styles.bigIcon}>🖥️</Text>
+          <Text style={styles.title}>Listener Not Responding</Text>
+          <Text style={styles.subtitle}>
+            You're connected to the relay, but the machine this device listens to isn't answering —
+            it may be offline. Pick another online machine, or retry once it's back.
+          </Text>
+          <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Machines')}>
+            <Text style={styles.buttonText}>Open Machines</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.buttonSecondary} onPress={load}>
+            <Text style={styles.buttonSecondaryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   if (connState === 'offline') {
     return (
       <View style={styles.center}>
@@ -231,4 +252,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   subtitle: { fontSize: 14, color: c.textMuted, textAlign: 'center', marginBottom: 16 },
   button: { backgroundColor: c.accent, borderRadius: 8, paddingHorizontal: 20, paddingVertical: 10 },
   buttonText: { color: c.accentFg, fontWeight: '600' },
+  buttonSecondary: { marginTop: 10, paddingHorizontal: 20, paddingVertical: 8 },
+  buttonSecondaryText: { color: c.textMuted, fontWeight: '600' },
 });

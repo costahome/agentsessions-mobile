@@ -101,9 +101,9 @@ let seqCounter = 0;
 /**
  * Send a mobile protocol message via relay and poll for response
  */
-async function sendAndPoll(body: Record<string, any>, timeoutMs = 60000): Promise<any> {
+async function sendAndPoll(body: Record<string, any>, timeoutMs = 60000, targetOverride?: string): Promise<any> {
   const correlationId = `${await getSenderId()}-${Date.now()}-${++seqCounter}`;
-  const targetMachineId = (await getListenerMachineId()) || '__leader__';
+  const targetMachineId = targetOverride !== undefined ? targetOverride : ((await getListenerMachineId()) || '__leader__');
   const message = { ...body, correlationId, targetMachineId };
 
   // Send to relay
@@ -383,7 +383,10 @@ export interface Machine {
 }
 
 export async function listMachines(): Promise<{ machines: Machine[]; selfId: string | null }> {
-  return sendAndPoll({ type: 'list-machines' });
+  // Route to the shared queue ('__leader__') so ANY alive machine can answer —
+  // never pin machine discovery to the chosen listener, which may be the one
+  // that's offline. This keeps the Machines picker usable for recovery.
+  return sendAndPoll({ type: 'list-machines' }, 15000, '__leader__');
 }
 
 export async function installFromMachine(
@@ -405,7 +408,7 @@ export async function checkConnection(): Promise<boolean> {
   }
 }
 
-export type ConnState = 'authorized' | 'unauthorized' | 'offline';
+export type ConnState = 'authorized' | 'unauthorized' | 'offline' | 'listener-unreachable';
 
 /**
  * Probe true connection + authorization state.
@@ -436,7 +439,10 @@ export async function probeStatus(): Promise<{ state: ConnState; status?: any }>
     } catch (e: any) {
       const msg = String(e?.message || '');
       if (/unauthori[sz]ed|approved user/i.test(msg)) return { state: 'unauthorized' };
-      return { state: 'offline' };
+      // Relay is reachable (auth-test passed) but the target listener machine
+      // didn't answer — it's likely offline. Distinguish this from a true relay
+      // outage so the UI can still offer access to the Machines picker.
+      return { state: 'listener-unreachable' };
     }
   } catch {
     return { state: 'offline' };
