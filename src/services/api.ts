@@ -329,6 +329,41 @@ export async function getStatus() {
   return sendAndPoll({ type: 'get-status' }, 15000);
 }
 
+// --- Chains (DAG of conditionally-triggered tasks) ---
+
+export interface ChainSummary {
+  id: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+  schedule?: string | null;
+  taskCount: number;
+  lastRun?: { id: string; status: string; time: string | null } | null;
+}
+
+export async function listChains(): Promise<{ chains: ChainSummary[] }> {
+  return sendAndPoll({ type: 'list-chains' });
+}
+
+/**
+ * Run a chain with live streaming output. Streams per-task status and output
+ * chunks via onUpdate, resolving with the final aggregated result payload.
+ */
+export async function runChainStreaming(
+  chainId: string,
+  onUpdate: (update: StreamUpdate) => void
+): Promise<any> {
+  return sendAndStream({ type: 'run-chain', payload: { chainId } }, onUpdate, 900000);
+}
+
+export async function getChainRuns(chainId: string, limit = 20) {
+  return sendAndPoll({ type: 'get-chain-runs', payload: { chainId, limit } });
+}
+
+export async function getChainRun(runId: string) {
+  return sendAndPoll({ type: 'get-chain-run', payload: { runId } });
+}
+
 // --- Machines (cross-machine browse + install) ---
 
 export interface MachineCatalogAgent { id: string; name: string; description?: string }

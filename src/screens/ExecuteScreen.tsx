@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, SectionList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { useColors, Palette } from '../services/theme';
-import { listAssignments, listTasks } from '../services/api';
+import { listAssignments, listTasks, listChains } from '../services/api';
 import { useFocusEffect } from '@react-navigation/native';
 
 function timeAgo(ts: string | number | null): string {
@@ -22,15 +22,17 @@ export default function ExecuteScreen({ navigation, route }: any) {
   const styles = useMemo(() => makeStyles(c), [c]);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
+  const [chains, setChains] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
 
   const loadData = async () => {
     try {
-      const [a, t] = await Promise.all([listAssignments(), listTasks()]);
+      const [a, t, ch] = await Promise.all([listAssignments(), listTasks(), listChains()]);
       setAssignments(a?.assignments || []);
       setTasks(t?.tasks || []);
+      setChains(ch?.chains || []);
     } catch {}
     finally {
       setLoading(false);
@@ -88,6 +90,22 @@ export default function ExecuteScreen({ navigation, route }: any) {
     });
   };
 
+  const runChain = (item: any) => {
+    navigation.navigate('LiveOutput', {
+      kind: 'chain',
+      chainId: item.id,
+      name: item.name,
+    });
+  };
+
+  const openChainHistory = (item: any) => {
+    navigation.navigate('RunHistory', {
+      kind: 'chain',
+      chainId: item.id,
+      name: item.name,
+    });
+  };
+
   const assignmentMeta = (item: any) => {
     const sched = item.schedule || 'Manual';
     return `${item.managerName || 'Manager'} • ${sched}`;
@@ -96,6 +114,12 @@ export default function ExecuteScreen({ navigation, route }: any) {
   const taskMeta = (item: any) => {
     if (item.status === 'running') return 'Running now';
     return item.schedule ? `Scheduled • ${item.schedule}` : 'Manual';
+  };
+
+  const chainMeta = (item: any) => {
+    const count = `${item.taskCount || 0} task${item.taskCount === 1 ? '' : 's'}`;
+    const sched = item.enabled === false ? 'Disabled' : (item.schedule || 'Manual');
+    return `${count} • ${sched}`;
   };
 
   const LastRunBadge = ({ lastRun }: { lastRun: any }) => {
@@ -115,9 +139,12 @@ export default function ExecuteScreen({ navigation, route }: any) {
 
   const assignmentsSection = { title: 'Assignments', count: assignments.length, data: assignments };
   const tasksSection = { title: 'Tasks', count: tasks.length, data: tasks };
+  const chainsSection = { title: 'Chains', count: chains.length, data: chains };
   const sections = route?.params?.initialTab === 'tasks'
-    ? [tasksSection, assignmentsSection]
-    : [assignmentsSection, tasksSection];
+    ? [tasksSection, chainsSection, assignmentsSection]
+    : route?.params?.initialTab === 'chains'
+    ? [chainsSection, assignmentsSection, tasksSection]
+    : [assignmentsSection, chainsSection, tasksSection];
 
   if (loading && !loaded) {
     return (
@@ -143,30 +170,40 @@ export default function ExecuteScreen({ navigation, route }: any) {
       )}
       renderItem={({ item, section }) => {
         const isAssignment = section.title === 'Assignments';
+        const isChain = section.title === 'Chains';
         const running = item.status === 'running';
+        const onCardPress = isChain ? () => openChainHistory(item)
+          : isAssignment ? () => openAssignmentHistory(item)
+          : () => openTaskHistory(item);
+        const onRunPress = isChain ? () => runChain(item)
+          : isAssignment ? () => runAssignment(item)
+          : () => runTask(item);
+        const metaText = isChain ? chainMeta(item)
+          : isAssignment ? assignmentMeta(item)
+          : taskMeta(item);
         return (
           <View style={styles.card}>
             <TouchableOpacity
               style={{ flex: 1 }}
               activeOpacity={0.6}
-              onPress={() => (isAssignment ? openAssignmentHistory(item) : openTaskHistory(item))}
+              onPress={onCardPress}
             >
               <Text style={styles.name}>{item.name}</Text>
-              <Text style={styles.meta}>{isAssignment ? assignmentMeta(item) : taskMeta(item)}</Text>
+              <Text style={styles.meta}>{metaText}</Text>
               <LastRunBadge lastRun={item.lastRun} />
               <Text style={styles.historyHint}>View recent runs ›</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.runBtn, running && styles.runBtnDisabled]}
               disabled={running}
-              onPress={() => (isAssignment ? runAssignment(item) : runTask(item))}
+              onPress={onRunPress}
             >
               <Text style={[styles.runBtnText, running && { color: c.warning }]}>{running ? '● Running' : '▶ Run'}</Text>
             </TouchableOpacity>
           </View>
         );
       }}
-      ListEmptyComponent={<Text style={styles.empty}>No connected assignments or tasks</Text>}
+      ListEmptyComponent={<Text style={styles.empty}>No connected assignments, chains, or tasks</Text>}
       stickySectionHeadersEnabled={false}
     />
   );

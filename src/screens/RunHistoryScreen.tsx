@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useColors, Palette } from '../services/theme';
-import { getRunHistory } from '../services/api';
+import { getRunHistory, getChainRuns, getChainRun } from '../services/api';
 import { useFocusEffect } from '@react-navigation/native';
 
 function timeAgo(ts: string | number | null): string {
@@ -18,24 +18,30 @@ function timeAgo(ts: string | number | null): string {
 }
 
 /**
- * Recent-runs list for a single task or assignment. Route params:
- *   { kind: 'task'|'assignment', name, agentId?, managerId?, assignmentId? }
+ * Recent-runs list for a single task, assignment, or chain. Route params:
+ *   { kind: 'task'|'assignment'|'chain', name, agentId?, managerId?, assignmentId?, chainId? }
  * Tapping a run opens ActivityDetail (markdown output + share).
  */
 export default function RunHistoryScreen({ navigation, route }: any) {
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
-  const { kind, name, agentId, managerId, assignmentId } = route.params || {};
+  const { kind, name, agentId, managerId, assignmentId, chainId } = route.params || {};
 
   const [runs, setRuns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [openingId, setOpeningId] = useState<string | null>(null);
 
   const load = async () => {
     try {
-      const resp = await getRunHistory({ kind, agentId, managerId, assignmentId, limit: 20 });
-      setRuns(resp?.runs || []);
+      if (kind === 'chain') {
+        const resp = await getChainRuns(chainId, 20);
+        setRuns(resp?.runs || []);
+      } else {
+        const resp = await getRunHistory({ kind, agentId, managerId, assignmentId, limit: 20 });
+        setRuns(resp?.runs || []);
+      }
     } catch {}
     finally {
       setLoading(false);
@@ -59,8 +65,8 @@ export default function RunHistoryScreen({ navigation, route }: any) {
   };
 
   const statusGlyph = (status: string) => {
-    if (status === 'completed' || status === 'success') return { icon: '✓', color: c.success };
-    if (status === 'failed') return { icon: '✗', color: c.danger };
+    if (status === 'completed' || status === 'success' || status === 'succeeded') return { icon: '✓', color: c.success };
+    if (status === 'failed' || status === 'error') return { icon: '✗', color: c.danger };
     if (status === 'running') return { icon: '●', color: c.warning };
     return { icon: '•', color: c.textMuted };
   };
@@ -68,16 +74,35 @@ export default function RunHistoryScreen({ navigation, route }: any) {
   const metaLine = (item: any) => {
     if (item.status === 'running') return 'Running';
     const dur = item.durationMs != null ? `${(item.durationMs / 1000).toFixed(1)}s` : null;
-    if (item.status === 'failed') return dur ? `Failed • ${dur}` : 'Failed';
+    const failed = item.status === 'failed' || item.status === 'error';
+    if (failed) return dur ? `Failed • ${dur}` : 'Failed';
     return dur ? `Completed • ${dur}` : 'Completed';
+  };
+
+  const openRun = async (item: any) => {
+    if (kind === 'chain') {
+      try {
+        setOpeningId(String(item.id));
+        const detail = await getChainRun(item.id);
+        navigation.navigate('RunDetail', { item: { ...item, name, output: detail?.output || '' } });
+      } catch (e: any) {
+        navigation.navigate('RunDetail', { item: { ...item, name, output: `Failed to load chain output: ${e.message}` } });
+      } finally {
+        setOpeningId(null);
+      }
+    } else {
+      navigation.navigate('RunDetail', { item: { ...item, name } });
+    }
   };
 
   const renderItem = ({ item }: { item: any }) => {
     const g = statusGlyph(item.status);
+    const opening = openingId === String(item.id);
     return (
       <TouchableOpacity
         style={styles.card}
-        onPress={() => navigation.navigate('RunDetail', { item: { ...item, name } })}
+        disabled={opening}
+        onPress={() => openRun(item)}
       >
         <Text style={[styles.glyph, { color: g.color }]}>{g.icon}</Text>
         <View style={{ flex: 1 }}>
@@ -86,7 +111,9 @@ export default function RunHistoryScreen({ navigation, route }: any) {
             {item.createdAt ? new Date(item.createdAt).toLocaleString() : ''}
           </Text>
         </View>
-        <Text style={styles.time}>{timeAgo(item.createdAt)}</Text>
+        {opening
+          ? <ActivityIndicator size="small" color={c.accent} style={{ marginLeft: 8 }} />
+          : <Text style={styles.time}>{timeAgo(item.createdAt)}</Text>}
       </TouchableOpacity>
     );
   };

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Share } from 'react-native';
 import { useColors, Palette } from '../services/theme';
-import { runAssignmentStreaming, runAgentStreaming, StreamUpdate } from '../services/api';
+import { runAssignmentStreaming, runAgentStreaming, runChainStreaming, StreamUpdate } from '../services/api';
 import MarkdownView from '../components/MarkdownView';
 
 /**
@@ -10,11 +10,12 @@ import MarkdownView from '../components/MarkdownView';
  * Route params:
  *   { kind: 'assignment', managerId, assignmentId, name }
  *   { kind: 'task', agentId, name }
+ *   { kind: 'chain', chainId, name }
  */
 export default function LiveOutputScreen({ route, navigation }: any) {
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
-  const { kind, managerId, assignmentId, agentId, name } = route.params || {};
+  const { kind, managerId, assignmentId, agentId, chainId, name } = route.params || {};
 
   const [status, setStatus] = useState<string>('Starting...');
   const [output, setOutput] = useState<string>('');
@@ -50,6 +51,8 @@ export default function LiveOutputScreen({ route, navigation }: any) {
         let result: any;
         if (kind === 'assignment') {
           result = await runAssignmentStreaming(managerId, assignmentId, onUpdate);
+        } else if (kind === 'chain') {
+          result = await runChainStreaming(chainId, onUpdate);
         } else {
           result = await runAgentStreaming(agentId, undefined, onUpdate);
         }
