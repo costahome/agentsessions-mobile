@@ -374,6 +374,7 @@ export interface Machine {
   isSelf: boolean;
   isLeader: boolean;
   alive: boolean;
+  lastSeen: string | null;
   updatedAt: string | null;
   agentCount: number;
   managerCount: number;

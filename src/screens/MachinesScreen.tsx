@@ -56,6 +56,13 @@ export default function MachinesScreen() {
     Alert.alert('Listener changed', `This device now listens to ${machine.hostname || machine.machineId}. Its agents, managers, chats and tasks are what you'll see across the app.`);
   };
 
+  // The listener this device targets: explicit choice, else the responder (self).
+  const effectiveListenerId = listenerId || selfId;
+  const listenerMachine = machines.find((m) => m.machineId === effectiveListenerId) || null;
+  // Warn states: selected listener is offline, or no longer visible in the cloud.
+  const listenerOffline = !!listenerMachine && !listenerMachine.alive;
+  const listenerMissing = !!effectiveListenerId && !listenerMachine && machines.length > 0;
+
   const doInstall = async (machine: Machine, type: 'agent' | 'manager', id: string, label: string) => {
     const key = `${machine.machineId}:${type}:${id}`;
     setInstalling(key);
@@ -95,6 +102,24 @@ export default function MachinesScreen() {
         machine's namespace.
       </Text>
 
+      {listenerOffline && (
+        <View style={[styles.banner, { borderColor: c.warning, backgroundColor: c.surface }]}>
+          <Text style={styles.bannerTitle}>⚠ Listener offline</Text>
+          <Text style={styles.muted}>
+            {`Your listener "${listenerMachine!.hostname || listenerMachine!.machineId}" hasn't heartbeated ${listenerMachine!.lastSeen ? `since ${timeAgo(listenerMachine!.lastSeen)}` : 'recently'}. Requests won't be answered until it reconnects. You can switch to another online machine below — this device never switches automatically.`}
+          </Text>
+        </View>
+      )}
+
+      {listenerMissing && (
+        <View style={[styles.banner, { borderColor: c.warning, backgroundColor: c.surface }]}>
+          <Text style={styles.bannerTitle}>⚠ Listener not visible</Text>
+          <Text style={styles.muted}>
+            Your selected listener isn't in the cloud registry right now. It may be offline or cloud sync is off. Pick an online machine below to redirect this device.
+          </Text>
+        </View>
+      )}
+
       {error && (
         <View style={[styles.banner, { borderColor: c.danger }]}>
           <Text style={{ color: c.danger }}>{error}</Text>
@@ -128,7 +153,12 @@ export default function MachinesScreen() {
                 </View>
                 <Text style={styles.meta}>
                   {m.agentCount} agents · {m.managerCount} managers
-                  {m.updatedAt ? ` · updated ${timeAgo(m.updatedAt)}` : ''}
+                </Text>
+                <Text style={[styles.meta, !m.alive && { color: c.warning }]}>
+                  {m.alive
+                    ? `● Heartbeat ${m.lastSeen ? timeAgo(m.lastSeen) : 'active'}`
+                    : `○ Last seen ${m.lastSeen ? timeAgo(m.lastSeen) : 'unknown'}`}
+                  {m.updatedAt ? ` · config ${timeAgo(m.updatedAt)}` : ''}
                 </Text>
               </View>
               <Text style={styles.chevron}>{isOpen ? '▲' : '▼'}</Text>
@@ -136,8 +166,10 @@ export default function MachinesScreen() {
 
             <View style={styles.listenBar}>
               {isActiveListener ? (
-                <View style={styles.listeningTag}>
-                  <Text style={styles.listeningText}>● Listening here</Text>
+                <View style={[styles.listeningTag, !m.alive && { backgroundColor: c.surfaceSoft }]}>
+                  <Text style={[styles.listeningText, !m.alive && { color: c.warning }]}>
+                    {m.alive ? '● Listening here' : '○ Listening here (offline)'}
+                  </Text>
                 </View>
               ) : (
                 <TouchableOpacity style={styles.listenBtn} onPress={() => doListen(m)} activeOpacity={0.7}>
@@ -227,6 +259,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   muted: { color: c.textMuted, fontSize: 13 },
   intro: { color: c.textMuted, fontSize: 13, marginBottom: 14, lineHeight: 18 },
   banner: { backgroundColor: c.surface, borderRadius: 12, borderWidth: 1, borderColor: c.border, padding: 14, marginBottom: 12 },
+  bannerTitle: { color: c.warning, fontWeight: '700', fontSize: 14, marginBottom: 4 },
   card: { backgroundColor: c.surface, borderRadius: 12, borderWidth: 1, borderColor: c.border, marginBottom: 12, overflow: 'hidden' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 },
   titleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },

@@ -183,7 +183,7 @@ export default function ExecuteScreen({ navigation, route }: any) {
         <ActivityIndicator size="large" color={c.accent} />
         <Text style={styles.loadingText}>Reconnecting to your listener…</Text>
         <Text style={styles.reconnectHint}>
-          Can't reach the machine handling this device yet. This can take a moment after a restart.
+          Can't reach the machine handling this device yet. This can take a moment after a restart. If it persists, check your listener's heartbeat under Home → Machines and pick an online machine.
         </Text>
         <TouchableOpacity style={styles.retryBtn} onPress={onRefresh}>
           <Text style={styles.retryBtnText}>Retry now</Text>
