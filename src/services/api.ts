@@ -458,13 +458,17 @@ export async function probeStatus(): Promise<{ state: ConnState; status?: any }>
     const configured = await isConfigured();
     if (!configured) return { state: 'offline' };
 
-    let relayOk = false;
+    // Distinguish a genuine token rejection (relay reachable, returns 401/403)
+    // from a true network/relay outage. A rejected token must route to the
+    // re-pair flow, not a misleading "offline".
+    let relayStatus = 0;
     try {
-      relayOk = (await relayFetch('/api/auth-test')).ok;
+      relayStatus = (await relayFetch('/api/auth-test')).status;
     } catch {
-      relayOk = false;
+      relayStatus = 0; // network error / relay unreachable
     }
-    if (!relayOk) return { state: 'offline' };
+    if (relayStatus === 401 || relayStatus === 403) return { state: 'unauthorized' };
+    if (relayStatus !== 200) return { state: 'offline' };
 
     try {
       const status = await getStatus();
