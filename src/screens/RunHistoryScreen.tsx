@@ -54,9 +54,24 @@ export default function RunHistoryScreen({ navigation, route }: any) {
     load();
   }, [loaded]));
 
+  const runAgain = useCallback(() => {
+    const params =
+      kind === 'chain' ? { kind, chainId, name }
+      : kind === 'assignment' ? { kind, managerId, assignmentId, name }
+      : { kind: 'task', agentId, name };
+    navigation.navigate('LiveOutput', params);
+  }, [navigation, kind, chainId, managerId, assignmentId, agentId, name]);
+
   React.useEffect(() => {
-    navigation.setOptions({ title: name || 'Recent Runs' });
-  }, [navigation, name]);
+    navigation.setOptions({
+      title: name || 'Recent Runs',
+      headerRight: () => (
+        <TouchableOpacity onPress={runAgain} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={{ color: c.accent, fontWeight: '700', fontSize: 14 }}>▶ Run again</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, name, runAgain, c.accent]);
 
   const onRefresh = async () => {
     setRefreshing(true);

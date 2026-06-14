@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, SectionList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, SectionList, TouchableOpacity, RefreshControl, ActivityIndicator, TextInput } from 'react-native';
 import { useColors, Palette } from '../services/theme';
 import { listAssignments, listTasks, listChains } from '../services/api';
 import { useFocusEffect } from '@react-navigation/native';
@@ -27,6 +27,7 @@ export default function ExecuteScreen({ navigation, route }: any) {
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [errored, setErrored] = useState(false);
+  const [query, setQuery] = useState('');
   const focusedRef = React.useRef(false);
   const retryRef = React.useRef<any>(null);
 
@@ -60,8 +61,11 @@ export default function ExecuteScreen({ navigation, route }: any) {
     focusedRef.current = true;
     if (!loaded) setLoading(true);
     loadWithRetry();
+    // Live refresh while focused so last-run badges / running state stay current.
+    const poll = setInterval(() => { if (focusedRef.current) loadData(); }, 12000);
     return () => {
       focusedRef.current = false;
+      clearInterval(poll);
       if (retryRef.current) { clearTimeout(retryRef.current); retryRef.current = null; }
     };
   }, [loaded, loadWithRetry]));
@@ -158,9 +162,16 @@ export default function ExecuteScreen({ navigation, route }: any) {
     );
   };
 
-  const assignmentsSection = { title: 'Assignments', count: assignments.length, data: assignments };
-  const tasksSection = { title: 'Tasks', count: tasks.length, data: tasks };
-  const chainsSection = { title: 'Flows', count: chains.length, data: chains };
+  const q = query.trim().toLowerCase();
+  const matches = (arr: any[]) =>
+    q ? arr.filter((x) => String(x.name || '').toLowerCase().includes(q)) : arr;
+  const fAssignments = matches(assignments);
+  const fTasks = matches(tasks);
+  const fChains = matches(chains);
+
+  const assignmentsSection = { title: 'Assignments', count: fAssignments.length, data: fAssignments };
+  const tasksSection = { title: 'Tasks', count: fTasks.length, data: fTasks };
+  const chainsSection = { title: 'Flows', count: fChains.length, data: fChains };
   const sections = route?.params?.initialTab === 'tasks'
     ? [tasksSection, chainsSection, assignmentsSection]
     : route?.params?.initialTab === 'chains'
@@ -193,61 +204,89 @@ export default function ExecuteScreen({ navigation, route }: any) {
   }
 
   return (
-    <SectionList
-      style={styles.container}
-      contentContainerStyle={{ padding: 12 }}
-      sections={sections}
-      keyExtractor={(item, i) => `${item.id || i}`}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}
-      renderSectionHeader={({ section }) => (
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{section.title}</Text>
-          <View style={styles.countBadge}><Text style={styles.countText}>{section.count}</Text></View>
-        </View>
-      )}
-      renderItem={({ item, section }) => {
-        const isAssignment = section.title === 'Assignments';
-        const isChain = section.title === 'Flows';
-        const running = item.status === 'running';
-        const onCardPress = isChain ? () => openChainHistory(item)
-          : isAssignment ? () => openAssignmentHistory(item)
-          : () => openTaskHistory(item);
-        const onRunPress = isChain ? () => runChain(item)
-          : isAssignment ? () => runAssignment(item)
-          : () => runTask(item);
-        const metaText = isChain ? chainMeta(item)
-          : isAssignment ? assignmentMeta(item)
-          : taskMeta(item);
-        return (
-          <View style={styles.card}>
-            <TouchableOpacity
-              style={{ flex: 1 }}
-              activeOpacity={0.6}
-              onPress={onCardPress}
-            >
-              <Text style={styles.name}>{item.name}</Text>
-              <Text style={styles.meta}>{metaText}</Text>
-              <LastRunBadge lastRun={item.lastRun} />
-              <Text style={styles.historyHint}>View recent runs ›</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.runBtn, running && styles.runBtnDisabled]}
-              disabled={running}
-              onPress={onRunPress}
-            >
-              <Text style={[styles.runBtnText, running && { color: c.warning }]}>{running ? '● Running' : '▶ Run'}</Text>
-            </TouchableOpacity>
+    <View style={styles.container}>
+      <View style={styles.searchWrap}>
+        <Text style={styles.searchIcon}>🔎</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search assignments, flows, tasks…"
+          placeholderTextColor={c.textMuted}
+          value={query}
+          onChangeText={setQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+        />
+        {query.length > 0 && (
+          <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.searchClear}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      <SectionList
+        style={styles.container}
+        contentContainerStyle={{ padding: 12 }}
+        sections={sections}
+        keyExtractor={(item, i) => `${item.id || i}`}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            <View style={styles.countBadge}><Text style={styles.countText}>{section.count}</Text></View>
           </View>
-        );
-      }}
-      ListEmptyComponent={<Text style={styles.empty}>No connected assignments, flows, or tasks</Text>}
-      stickySectionHeadersEnabled={false}
-    />
+        )}
+        renderItem={({ item, section }) => {
+          const isAssignment = section.title === 'Assignments';
+          const isChain = section.title === 'Flows';
+          const running = item.status === 'running';
+          const onCardPress = isChain ? () => openChainHistory(item)
+            : isAssignment ? () => openAssignmentHistory(item)
+            : () => openTaskHistory(item);
+          const onRunPress = isChain ? () => runChain(item)
+            : isAssignment ? () => runAssignment(item)
+            : () => runTask(item);
+          const metaText = isChain ? chainMeta(item)
+            : isAssignment ? assignmentMeta(item)
+            : taskMeta(item);
+          return (
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={{ flex: 1 }}
+                activeOpacity={0.6}
+                onPress={onCardPress}
+              >
+                <Text style={styles.name}>{item.name}</Text>
+                <Text style={styles.meta}>{metaText}</Text>
+                <LastRunBadge lastRun={item.lastRun} />
+                <Text style={styles.historyHint}>View recent runs ›</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.runBtn, running && styles.runBtnDisabled]}
+                disabled={running}
+                onPress={onRunPress}
+              >
+                <Text style={[styles.runBtnText, running && { color: c.warning }]}>{running ? '● Running' : '▶ Run'}</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        }}
+        ListEmptyComponent={
+          <Text style={styles.empty}>
+            {q ? `No matches for "${query}"` : 'No connected assignments, flows, or tasks'}
+          </Text>
+        }
+        stickySectionHeadersEnabled={false}
+      />
+    </View>
   );
 }
 
 const makeStyles = (c: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.bg },
+  searchWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, marginHorizontal: 12, marginTop: 12, paddingHorizontal: 12 },
+  searchIcon: { fontSize: 14, marginRight: 8, color: c.textMuted },
+  searchInput: { flex: 1, paddingVertical: 10, fontSize: 15, color: c.text },
+  searchClear: { fontSize: 14, color: c.textMuted, paddingLeft: 8 },
   loadingWrap: { flex: 1, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 },
   loadingText: { color: c.textMuted, fontSize: 14 },
   reconnectHint: { color: c.textMuted, fontSize: 12, textAlign: 'center', lineHeight: 18, marginTop: -4 },

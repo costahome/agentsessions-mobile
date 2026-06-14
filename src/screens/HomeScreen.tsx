@@ -1,8 +1,8 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { useColors, Palette } from '../services/theme';
 import { getStatus, probeStatus, ConnState } from '../services/api';
-import { useFocusEffect } from '@react-navigation/native';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 
 function timeAgo(ts: string | number | null): string {
   if (!ts) return '';
@@ -30,7 +30,8 @@ export default function HomeScreen({ navigation }: any) {
     if (state === 'authorized' && s) setStatus(s);
   };
 
-  useFocusEffect(useCallback(() => { load(); }, []));
+  // Poll every 8s while focused so "Running now" and Today counts stay live.
+  useAutoRefresh(load, 8000);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -148,7 +149,12 @@ export default function HomeScreen({ navigation }: any) {
         <>
           <Text style={styles.sectionTitle}>Running Now</Text>
           {running.map((r: any, i: number) => (
-            <View key={i} style={styles.card}>
+            <TouchableOpacity
+              key={i}
+              style={styles.card}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('Activity')}
+            >
               <Text style={styles.cardIcon}>🔍</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardName}>{r.name || r.id}</Text>
@@ -157,7 +163,7 @@ export default function HomeScreen({ navigation }: any) {
               <View style={[styles.badge, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
                 <Text style={[styles.badgeText, { color: c.warning }]}>● Running</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
         </>
       )}

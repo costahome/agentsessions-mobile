@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, TextInput } from 'react-native';
 import { useColors, Palette } from '../services/theme';
 import { listManagers, listAgents } from '../services/api';
 import { useFocusEffect } from '@react-navigation/native';
@@ -15,6 +15,7 @@ export default function ChatListScreen({ navigation, route }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
+  const [query, setQuery] = useState('');
 
   React.useEffect(() => {
     const t = route?.params?.initialTab;
@@ -60,7 +61,14 @@ export default function ChatListScreen({ navigation, route }: any) {
     return 'Manual';
   };
 
-  const data = tab === 'managers' ? managers : agents;
+  const all = tab === 'managers' ? managers : agents;
+  const q = query.trim().toLowerCase();
+  const data = q
+    ? all.filter((x: any) =>
+        String(x.name || '').toLowerCase().includes(q) ||
+        String(x.description || '').toLowerCase().includes(q)
+      )
+    : all;
 
   return (
     <View style={styles.container}>
@@ -71,6 +79,25 @@ export default function ChatListScreen({ navigation, route }: any) {
         <TouchableOpacity style={[styles.segmentBtn, tab === 'agents' && styles.segmentActive]} onPress={() => setTab('agents')}>
           <Text style={[styles.segmentText, tab === 'agents' && styles.segmentTextActive]}>Agents</Text>
         </TouchableOpacity>
+      </View>
+
+      <View style={styles.searchWrap}>
+        <Text style={styles.searchIcon}>🔎</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder={`Search ${tab}…`}
+          placeholderTextColor={c.textMuted}
+          value={query}
+          onChangeText={setQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+        />
+        {query.length > 0 && (
+          <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.searchClear}>✕</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <FlatList
@@ -120,11 +147,15 @@ export default function ChatListScreen({ navigation, route }: any) {
 
 const makeStyles = (c: Palette) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.bg },
-  segment: { flexDirection: 'row', backgroundColor: c.surfaceSoft, borderRadius: 10, margin: 12, padding: 3 },
+  segment: { flexDirection: 'row', backgroundColor: c.surfaceSoft, borderRadius: 10, margin: 12, marginBottom: 8, padding: 3 },
   segmentBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
   segmentActive: { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
   segmentText: { fontSize: 14, fontWeight: '600', color: c.textMuted },
   segmentTextActive: { color: c.accent },
+  searchWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: 10, borderWidth: 1, borderColor: c.border, marginHorizontal: 12, marginBottom: 4, paddingHorizontal: 12 },
+  searchIcon: { fontSize: 14, marginRight: 8, color: c.textMuted },
+  searchInput: { flex: 1, paddingVertical: 10, fontSize: 15, color: c.text },
+  searchClear: { fontSize: 14, color: c.textMuted, paddingLeft: 8 },
   card: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: c.surface, marginBottom: 8, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: c.border },
   icon: { fontSize: 24, marginRight: 12 },
   name: { fontSize: 16, fontWeight: '600', color: c.text },
