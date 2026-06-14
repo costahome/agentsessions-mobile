@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Share } from 'react-native';
 import { useColors, Palette } from '../services/theme';
-import { sendChatStreaming, getChatHistory } from '../services/api';
+import { sendChatStreaming, getChatHistory, listChatThreads, newChatThread } from '../services/api';
 import MarkdownView from '../components/MarkdownView';
 
 interface Message {
@@ -15,10 +15,12 @@ export default function ChatScreen({ route, navigation }: any) {
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
   const { targetId, targetType, name } = route.params;
+  const isAgent = targetType === 'agent';
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
+  const [threadId, setThreadId] = useState<string | null>(route.params?.threadId || null);
   const flatListRef = useRef<FlatList>(null);
   const streamBuffer = useRef('');
   const messagesRef = useRef<Message[]>([]);
@@ -36,29 +38,80 @@ export default function ChatScreen({ route, navigation }: any) {
     } catch {}
   }, [name]);
 
+  const startNewConversation = useCallback(async () => {
+    if (!isAgent) return;
+    try {
+      const resp = await newChatThread(targetId, 'agent');
+      if (resp?.threadId) {
+        setThreadId(resp.threadId);
+        setMessages([]);
+      }
+    } catch {}
+  }, [isAgent, targetId]);
+
   useEffect(() => {
     navigation.setOptions({
       title: name,
       headerRight: () => (
-        <TouchableOpacity onPress={onShare}>
-          <Text style={styles.shareBtn}>Share</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRow}>
+          {isAgent && (
+            <>
+              <TouchableOpacity onPress={() => navigation.navigate('ChatThreads', { targetId, targetType, name, currentThreadId: threadId })}>
+                <Text style={styles.headerBtn}>History</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={startNewConversation}>
+                <Text style={styles.headerBtn}>New</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          <TouchableOpacity onPress={onShare}>
+            <Text style={styles.headerBtn}>Share</Text>
+          </TouchableOpacity>
+        </View>
       ),
     });
-  }, [navigation, name, onShare, styles]);
+  }, [navigation, name, onShare, styles, isAgent, targetId, targetType, threadId, startNewConversation]);
+
+  // Resolve which thread to load whenever the route's threadId changes (e.g.
+  // when navigating back from the History screen with a selected thread).
+  useEffect(() => {
+    if (route.params?.threadId) setThreadId(route.params.threadId);
+  }, [route.params?.threadId]);
 
   useEffect(() => {
-    loadHistory();
-  }, []);
+    resolveAndLoad();
+  }, [threadId]);
 
-  const loadHistory = async () => {
-    try {
-      const chatId = `${sessionId}:${targetId}`;
-      const resp = await getChatHistory(chatId);
-      if (resp.messages) {
-        setMessages(resp.messages.map((m: any) => ({ role: m.role, content: m.content, timestamp: m.timestamp })));
-      }
-    } catch {}
+  const resolveAndLoad = async () => {
+    if (!isAgent) {
+      // Manager: legacy single-conversation history keyed by target.
+      try {
+        const resp = await getChatHistory({ targetId });
+        if (resp.messages) setMessages(resp.messages.map((m: any) => ({ role: m.role, content: m.content, timestamp: m.timestamp })));
+      } catch {}
+      return;
+    }
+    let tid = threadId;
+    if (!tid) {
+      // No explicit thread — resume the most recent, or mint a fresh one.
+      try {
+        const list = await listChatThreads(targetId);
+        const threads = list?.threads || [];
+        if (threads.length > 0) {
+          tid = threads[0].threadId;
+        } else {
+          const created = await newChatThread(targetId, 'agent');
+          tid = created?.threadId || null;
+        }
+      } catch {}
+      if (tid && tid !== threadId) { setThreadId(tid); return; } // re-runs effect
+    }
+    if (tid) {
+      try {
+        const resp = await getChatHistory({ threadId: tid });
+        if (resp.messages) setMessages(resp.messages.map((m: any) => ({ role: m.role, content: m.content, timestamp: m.timestamp })));
+      } catch {}
+    }
   };
 
   const send = async () => {
@@ -86,7 +139,7 @@ export default function ChatScreen({ route, navigation }: any) {
           });
           setStatusText(null);
         }
-      });
+      }, threadId || undefined);
 
       const finalContent = resp.output || resp.response || streamBuffer.current || 'No response';
       setMessages(prev => {
@@ -203,5 +256,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   statusRowText: { marginLeft: 6, fontSize: 12, color: c.textMuted },
   streamingIndicator: { marginBottom: 4 },
   shareBtn: { color: c.accent, fontSize: 15, fontWeight: '600', marginRight: 4 },
+  headerRow: { flexDirection: 'row', alignItems: 'center' },
+  headerBtn: { color: c.accent, fontSize: 15, fontWeight: '600', marginLeft: 14 },
   empty: { textAlign: 'center', color: c.textMuted, fontSize: 14, marginTop: 60 },
 });

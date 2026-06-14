@@ -9,6 +9,7 @@ import HomeScreen from '../screens/HomeScreen';
 import MachinesScreen from '../screens/MachinesScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 import ChatScreen from '../screens/ChatScreen';
+import ChatThreadsScreen from '../screens/ChatThreadsScreen';
 import ActivityScreen from '../screens/ActivityScreen';
 import ActivityDetailScreen from '../screens/ActivityDetailScreen';
 import ExecuteScreen from '../screens/ExecuteScreen';
@@ -43,6 +44,7 @@ function ChatNavigator() {
     <ChatStack.Navigator screenOptions={opts}>
       <ChatStack.Screen name="ChatList" component={ChatListScreen} options={{ title: 'Chat' }} />
       <ChatStack.Screen name="ChatConversation" component={ChatScreen} options={{ title: 'Conversation' }} />
+      <ChatStack.Screen name="ChatThreads" component={ChatThreadsScreen} options={{ title: 'Conversations' }} />
     </ChatStack.Navigator>
   );
 }

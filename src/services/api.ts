@@ -197,10 +197,11 @@ export async function sendChatStreaming(
   targetType: 'agent' | 'manager',
   message: string,
   sessionId: string | undefined,
-  onUpdate: (update: { type: string; status?: string; message?: string; text?: string; isFinal?: boolean }) => void
+  onUpdate: (update: { type: string; status?: string; message?: string; text?: string; isFinal?: boolean }) => void,
+  threadId?: string
 ): Promise<any> {
   return sendAndStream(
-    { type: 'chat', sessionId, payload: { targetId, targetType, message } },
+    { type: 'chat', sessionId, payload: { targetId, targetType, message, threadId } },
     onUpdate,
     300000
   );
@@ -313,8 +314,18 @@ export async function listChats() {
   return sendAndPoll({ type: 'list-chats' });
 }
 
-export async function getChatHistory(chatId: string) {
-  return sendAndPoll({ type: 'get-chat-history', payload: { chatId } });
+export async function getChatHistory(params: { threadId?: string; targetId?: string }) {
+  return sendAndPoll({ type: 'get-chat-history', payload: params });
+}
+
+/** List saved conversation threads for an agent target. */
+export async function listChatThreads(targetId: string) {
+  return sendAndPoll({ type: 'list-chat-threads', payload: { targetId } });
+}
+
+/** Mint a new conversation thread (copilot session) for an agent target. */
+export async function newChatThread(targetId: string, targetType: 'agent' | 'manager' = 'agent') {
+  return sendAndPoll({ type: 'new-chat-thread', payload: { targetId, targetType } });
 }
 
 export async function getActivity(limit = 50) {
