@@ -83,9 +83,19 @@ export default function HomeScreen({ navigation }: any) {
         <View style={styles.disconnectCard}>
           <Text style={styles.bigIcon}>📡</Text>
           <Text style={styles.title}>Not Connected</Text>
-          <Text style={styles.subtitle}>Go to Settings to pair with your server</Text>
-          <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Settings')}>
-            <Text style={styles.buttonText}>Open Settings</Text>
+          <Text style={styles.subtitle}>
+            Can't reach the relay right now. If you've paired before, you can still review your
+            machines (last-known status) and pick a different listener — it'll apply once you
+            reconnect.
+          </Text>
+          <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Machines')}>
+            <Text style={styles.buttonText}>Open Machines</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.buttonSecondary} onPress={() => navigation.navigate('Settings')}>
+            <Text style={styles.buttonSecondaryText}>Open Settings</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.buttonSecondary} onPress={load}>
+            <Text style={styles.buttonSecondaryText}>Retry</Text>
           </TouchableOpacity>
         </View>
       </View>

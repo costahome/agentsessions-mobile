@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useColors, Palette } from '../services/theme';
-import { listMachines, installFromMachine, getListenerMachineId, setListenerMachineId, Machine } from '../services/api';
+import { listMachines, getCachedMachines, installFromMachine, getListenerMachineId, setListenerMachineId, Machine } from '../services/api';
 import { useFocusEffect } from '@react-navigation/native';
 
 function timeAgo(ts: string | null): string {
@@ -27,6 +27,7 @@ export default function MachinesScreen() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [installing, setInstalling] = useState<string | null>(null);
   const [listenerId, setListenerId] = useState<string | null>(null);
+  const [stale, setStale] = useState<number | null>(null);
 
   const load = async () => {
     try {
@@ -35,8 +36,21 @@ export default function MachinesScreen() {
       setMachines(res?.machines || []);
       setSelfId(res?.selfId ?? null);
       setListenerId(lid);
+      setStale(null);
     } catch (e: any) {
-      setError(e?.message || 'Failed to load machines');
+      // Live discovery failed (relay or every machine unreachable). Fall back to
+      // the last-known snapshot so the user keeps machine visibility and can
+      // re-point this device's listener even while disconnected.
+      const [cached, lid] = await Promise.all([getCachedMachines(), getListenerMachineId()]);
+      setListenerId(lid);
+      if (cached && cached.machines.length) {
+        setMachines(cached.machines);
+        setSelfId(cached.selfId ?? null);
+        setStale(cached.cachedAt || Date.now());
+        setError(null);
+      } else {
+        setError(e?.message || 'Failed to load machines');
+      }
     } finally {
       setLoading(false);
     }
@@ -116,6 +130,15 @@ export default function MachinesScreen() {
           <Text style={styles.bannerTitle}>⚠ Listener not visible</Text>
           <Text style={styles.muted}>
             Your selected listener isn't in the cloud registry right now. It may be offline or cloud sync is off. Pick an online machine below to redirect this device.
+          </Text>
+        </View>
+      )}
+
+      {stale && (
+        <View style={[styles.banner, { borderColor: c.warning, backgroundColor: c.surface }]}>
+          <Text style={styles.bannerTitle}>⚠ Showing last-known machines</Text>
+          <Text style={styles.muted}>
+            {`Couldn't reach the relay just now, so this is the snapshot from ${timeAgo(new Date(stale).toISOString())}. Heartbeat times below are from then. You can still pick a listener — it'll take effect once this device reconnects. Pull to refresh to retry.`}
           </Text>
         </View>
       )}

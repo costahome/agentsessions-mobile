@@ -16,6 +16,7 @@ import { Platform } from 'react-native';
 const CONFIG_KEY = '@agent_supervisor_relay_config';
 const TOKEN_KEY = '@agent_supervisor_device_token';
 const LISTENER_KEY = '@agent_supervisor_listener_machine';
+const MACHINES_CACHE_KEY = '@agent_supervisor_machines_cache';
 
 // The machine this device "listens" to — its agents/managers/chats/tasks are what
 // the user sees and interacts with. null means "default" (the server leader),
@@ -386,7 +387,39 @@ export async function listMachines(): Promise<{ machines: Machine[]; selfId: str
   // Route to the shared queue ('__leader__') so ANY alive machine can answer —
   // never pin machine discovery to the chosen listener, which may be the one
   // that's offline. This keeps the Machines picker usable for recovery.
-  return sendAndPoll({ type: 'list-machines' }, 15000, '__leader__');
+  const res = await sendAndPoll({ type: 'list-machines' }, 15000, '__leader__');
+  // Cache the last-known machine list so the picker still works when the relay
+  // or every machine is unreachable — the user keeps visibility into machines,
+  // their last heartbeat, and can re-point this device's listener for when
+  // connectivity returns (the choice is stored locally and applied on reconnect).
+  if (res && Array.isArray(res.machines)) {
+    try {
+      await AsyncStorage.setItem(
+        MACHINES_CACHE_KEY,
+        JSON.stringify({ machines: res.machines, selfId: res.selfId ?? null, cachedAt: Date.now() })
+      );
+    } catch {
+      // best-effort cache; ignore write failures
+    }
+  }
+  return res;
+}
+
+/**
+ * Last successfully-fetched machine list, persisted across launches. Returned
+ * when a live `listMachines()` fails (relay/listener unreachable) so the
+ * Machines screen can still render a stale-but-useful snapshot.
+ */
+export async function getCachedMachines(): Promise<{ machines: Machine[]; selfId: string | null; cachedAt: number } | null> {
+  try {
+    const raw = await AsyncStorage.getItem(MACHINES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && Array.isArray(parsed.machines)) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export async function installFromMachine(
