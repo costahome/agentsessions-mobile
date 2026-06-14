@@ -197,7 +197,7 @@ export async function sendChatStreaming(
   targetType: 'agent' | 'manager',
   message: string,
   sessionId: string | undefined,
-  onUpdate: (update: { type: string; status?: string; message?: string; text?: string; isFinal?: boolean }) => void,
+  onUpdate: (update: StreamUpdate) => void,
   threadId?: string
 ): Promise<any> {
   return sendAndStream(
@@ -213,6 +213,11 @@ export type StreamUpdate = {
   message?: string;
   text?: string;
   isFinal?: boolean;
+  phase?: string;
+  agentId?: string;
+  speaker?: string;
+  manager?: string;
+  exitCode?: number;
 };
 
 /**
@@ -263,6 +268,19 @@ export async function sendAndStream(
       if (raw && raw.type === 'streaming-chunk') {
         deadline = Date.now() + timeoutMs;
         onUpdate({ type: 'chunk', text: raw.payload?.text, isFinal: raw.payload?.isFinal });
+        continue;
+      }
+      if (raw && raw.type === 'agent-step') {
+        deadline = Date.now() + timeoutMs;
+        onUpdate({
+          type: 'agent-step',
+          phase: raw.payload?.phase,
+          agentId: raw.payload?.agentId,
+          speaker: raw.payload?.speaker,
+          manager: raw.payload?.manager,
+          text: raw.payload?.text,
+          exitCode: raw.payload?.exitCode,
+        });
         continue;
       }
       return raw;

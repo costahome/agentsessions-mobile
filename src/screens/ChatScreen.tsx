@@ -5,17 +5,19 @@ import { sendChatStreaming, getChatHistory, listChatThreads, newChatThread } fro
 import MarkdownView from '../components/MarkdownView';
 
 interface Message {
-  role: 'user' | 'assistant' | 'status';
+  role: 'user' | 'assistant' | 'agent' | 'status';
   content: string;
   timestamp?: string;
   streaming?: boolean; // true while streaming text is accumulating
+  speaker?: string;    // attribution: manager name or sub-agent name
+  agentId?: string;    // sub-agent id (role === 'agent')
 }
 
 export default function ChatScreen({ route, navigation }: any) {
   const c = useColors();
   const styles = useMemo(() => makeStyles(c), [c]);
   const { targetId, targetType, name } = route.params;
-  const isAgent = targetType === 'agent';
+  const isManager = targetType === 'manager';
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -31,7 +33,10 @@ export default function ChatScreen({ route, navigation }: any) {
   const onShare = useCallback(async () => {
     const transcript = messagesRef.current
       .filter(m => m.role !== 'status')
-      .map(m => `${m.role === 'user' ? 'You' : name}: ${m.content}`)
+      .map(m => {
+        const who = m.role === 'user' ? 'You' : (m.speaker || name);
+        return `${who}: ${m.content}`;
+      })
       .join('\n\n');
     try {
       await Share.share({ title: `Chat with ${name}`, message: `Chat with ${name}\n\n${transcript}` });
@@ -39,38 +44,33 @@ export default function ChatScreen({ route, navigation }: any) {
   }, [name]);
 
   const startNewConversation = useCallback(async () => {
-    if (!isAgent) return;
     try {
-      const resp = await newChatThread(targetId, 'agent');
+      const resp = await newChatThread(targetId, targetType);
       if (resp?.threadId) {
         setThreadId(resp.threadId);
         setMessages([]);
       }
     } catch {}
-  }, [isAgent, targetId]);
+  }, [targetId, targetType]);
 
   useEffect(() => {
     navigation.setOptions({
       title: name,
       headerRight: () => (
         <View style={styles.headerRow}>
-          {isAgent && (
-            <>
-              <TouchableOpacity onPress={() => navigation.navigate('ChatThreads', { targetId, targetType, name, currentThreadId: threadId })}>
-                <Text style={styles.headerBtn}>History</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={startNewConversation}>
-                <Text style={styles.headerBtn}>New</Text>
-              </TouchableOpacity>
-            </>
-          )}
+          <TouchableOpacity onPress={() => navigation.navigate('ChatThreads', { targetId, targetType, name, currentThreadId: threadId })}>
+            <Text style={styles.headerBtn}>History</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={startNewConversation}>
+            <Text style={styles.headerBtn}>New</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={onShare}>
             <Text style={styles.headerBtn}>Share</Text>
           </TouchableOpacity>
         </View>
       ),
     });
-  }, [navigation, name, onShare, styles, isAgent, targetId, targetType, threadId, startNewConversation]);
+  }, [navigation, name, onShare, styles, targetId, targetType, threadId, startNewConversation]);
 
   // Resolve which thread to load whenever the route's threadId changes (e.g.
   // when navigating back from the History screen with a selected thread).
@@ -82,15 +82,17 @@ export default function ChatScreen({ route, navigation }: any) {
     resolveAndLoad();
   }, [threadId]);
 
+  const mapMsg = (m: any): Message => ({
+    role: m.role,
+    content: m.content,
+    timestamp: m.timestamp,
+    speaker: m.speaker,
+    agentId: m.agentId,
+  });
+
   const resolveAndLoad = async () => {
-    if (!isAgent) {
-      // Manager: legacy single-conversation history keyed by target.
-      try {
-        const resp = await getChatHistory({ targetId });
-        if (resp.messages) setMessages(resp.messages.map((m: any) => ({ role: m.role, content: m.content, timestamp: m.timestamp })));
-      } catch {}
-      return;
-    }
+    // Both agents and managers use threads. Agents resume from their copilot
+    // session; managers resume from the persisted attributed transcript.
     let tid = threadId;
     if (!tid) {
       // No explicit thread — resume the most recent, or mint a fresh one.
@@ -100,7 +102,7 @@ export default function ChatScreen({ route, navigation }: any) {
         if (threads.length > 0) {
           tid = threads[0].threadId;
         } else {
-          const created = await newChatThread(targetId, 'agent');
+          const created = await newChatThread(targetId, targetType);
           tid = created?.threadId || null;
         }
       } catch {}
@@ -109,7 +111,7 @@ export default function ChatScreen({ route, navigation }: any) {
     if (tid) {
       try {
         const resp = await getChatHistory({ threadId: tid });
-        if (resp.messages) setMessages(resp.messages.map((m: any) => ({ role: m.role, content: m.content, timestamp: m.timestamp })));
+        if (resp.messages) setMessages(resp.messages.map(mapMsg));
       } catch {}
     }
   };
@@ -127,6 +129,16 @@ export default function ChatScreen({ route, navigation }: any) {
       const resp = await sendChatStreaming(targetId, targetType, userMsg.content, sessionId, (update) => {
         if (update.type === 'status') {
           setStatusText(update.message || update.status || 'Processing...');
+        } else if (update.type === 'agent-step') {
+          if (update.phase === 'start') {
+            setStatusText(`🤖 ${update.speaker || 'Sub-agent'} is working…`);
+          } else if (update.phase === 'result') {
+            const speaker = update.speaker || update.agentId || 'Sub-agent';
+            const text = update.text || '(no output)';
+            setMessages(prev => [...prev, { role: 'agent', content: text, speaker, agentId: update.agentId }]);
+            setStatusText(`${name} is reviewing ${speaker}'s results…`);
+          }
+          // phase 'manager-final': the manager's answer arrives as the result.
         } else if (update.type === 'chunk' && update.text && !update.isFinal) {
           streamBuffer.current += update.text;
           setMessages(prev => {
@@ -142,12 +154,13 @@ export default function ChatScreen({ route, navigation }: any) {
       }, threadId || undefined);
 
       const finalContent = resp.output || resp.response || streamBuffer.current || 'No response';
+      const finalSpeaker = isManager ? name : undefined;
       setMessages(prev => {
         const last = prev[prev.length - 1];
         if (last?.streaming) {
-          return [...prev.slice(0, -1), { role: 'assistant', content: finalContent }];
+          return [...prev.slice(0, -1), { role: 'assistant', content: finalContent, speaker: finalSpeaker }];
         }
-        return [...prev, { role: 'assistant', content: finalContent }];
+        return [...prev, { role: 'assistant', content: finalContent, speaker: finalSpeaker }];
       });
     } catch (err: any) {
       setMessages(prev => {
@@ -173,22 +186,44 @@ export default function ChatScreen({ route, navigation }: any) {
         </View>
       );
     }
-    return (
-      <View style={[
-        styles.bubble,
-        item.role === 'user' ? styles.userBubble : styles.assistantBubble,
-        item.streaming && styles.streamingBubble,
-      ]}>
-        {item.streaming && (
-          <View style={styles.streamingIndicator}>
-            <ActivityIndicator size="small" color={c.accent} />
-          </View>
-        )}
-        {item.role === 'user' ? (
+    if (item.role === 'user') {
+      return (
+        <View style={[styles.bubble, styles.userBubble]}>
           <Text style={[styles.bubbleText, styles.userText]}>{item.content}</Text>
-        ) : (
-          <MarkdownView>{item.content}</MarkdownView>
+        </View>
+      );
+    }
+    // Sub-agent contribution within a manager conversation — clearly attributed
+    // and visually distinct from the manager's own messages.
+    if (item.role === 'agent') {
+      return (
+        <View style={styles.agentWrap}>
+          <Text style={styles.agentHeader}>🤖 {item.speaker || item.agentId || 'Sub-agent'}</Text>
+          <View style={[styles.bubble, styles.agentBubble]}>
+            <MarkdownView>{item.content}</MarkdownView>
+          </View>
+        </View>
+      );
+    }
+    // Assistant: for managers, label with the manager name so it's clear the
+    // manager (not a sub-agent) is speaking.
+    return (
+      <View style={styles.assistantWrap}>
+        {isManager && (
+          <Text style={styles.managerHeader}>🎯 {item.speaker || name}</Text>
         )}
+        <View style={[
+          styles.bubble,
+          styles.assistantBubble,
+          item.streaming && styles.streamingBubble,
+        ]}>
+          {item.streaming && (
+            <View style={styles.streamingIndicator}>
+              <ActivityIndicator size="small" color={c.accent} />
+            </View>
+          )}
+          <MarkdownView>{item.content}</MarkdownView>
+        </View>
       </View>
     );
   };
@@ -242,6 +277,11 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   bubble: { maxWidth: '85%', borderRadius: 14, padding: 12, marginBottom: 8 },
   userBubble: { alignSelf: 'flex-end', backgroundColor: c.accent },
   assistantBubble: { alignSelf: 'flex-start', backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
+  assistantWrap: { alignSelf: 'flex-start', maxWidth: '92%', marginBottom: 8 },
+  managerHeader: { fontSize: 12, fontWeight: '700', color: c.accent, marginBottom: 3, marginLeft: 2 },
+  agentWrap: { alignSelf: 'flex-start', maxWidth: '92%', marginBottom: 8, marginLeft: 16 },
+  agentHeader: { fontSize: 12, fontWeight: '700', color: c.textSoft, marginBottom: 3, marginLeft: 2 },
+  agentBubble: { alignSelf: 'flex-start', backgroundColor: c.accentSoft, borderWidth: 1, borderColor: c.border, borderStyle: 'dashed' },
   streamingBubble: { borderStyle: 'dashed', borderColor: c.accent, borderWidth: 1 },
   bubbleText: { fontSize: 15, lineHeight: 20 },
   userText: { color: c.accentFg },

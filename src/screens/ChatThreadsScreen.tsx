@@ -66,7 +66,7 @@ export default function ChatThreadsScreen({ navigation, route }: any) {
 
   const startNew = async () => {
     try {
-      const resp = await newChatThread(targetId, 'agent');
+      const resp = await newChatThread(targetId, targetType);
       if (resp?.threadId) openThread(resp.threadId);
     } catch {}
   };
