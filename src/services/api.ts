@@ -202,7 +202,7 @@ export async function sendChatStreaming(
   return sendAndStream(
     { type: 'chat', sessionId, payload: { targetId, targetType, message } },
     onUpdate,
-    180000
+    300000
   );
 }
 
@@ -218,6 +218,13 @@ export type StreamUpdate = {
  * Generic send + stream helper. Sends a mobile protocol message and polls the
  * relay, invoking onUpdate for every interim status-update / streaming-chunk,
  * and resolving with the final result payload. Used by chat and live run views.
+ *
+ * `timeoutMs` is treated as an INACTIVITY window, not an absolute deadline: the
+ * timer resets every time an interim message (status-update / streaming-chunk)
+ * for this correlation arrives. This lets long-but-active operations (e.g. a
+ * manager orchestrating a multi-minute agent run) continue as long as the
+ * server keeps sending progress/heartbeat updates, while still failing fast
+ * when the server goes truly silent.
  */
 export async function sendAndStream(
   body: Record<string, any>,
@@ -237,7 +244,7 @@ export async function sendAndStream(
     throw new Error(`Send failed (${sendResp.status}): ${err}`);
   }
 
-  const deadline = Date.now() + timeoutMs;
+  let deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const idx = messageBuffer.findIndex((m: any) => m.correlationId === correlationId || m.body?.correlationId === correlationId);
     if (idx >= 0) {
@@ -248,10 +255,12 @@ export async function sendAndStream(
       if (raw && raw.type === 'error') throw new Error(raw.error || raw.payload?.error || 'Server error');
 
       if (raw && raw.type === 'status-update') {
+        deadline = Date.now() + timeoutMs;
         onUpdate({ type: 'status', status: raw.payload?.status, message: raw.payload?.message });
         continue;
       }
       if (raw && raw.type === 'streaming-chunk') {
+        deadline = Date.now() + timeoutMs;
         onUpdate({ type: 'chunk', text: raw.payload?.text, isFinal: raw.payload?.isFinal });
         continue;
       }
