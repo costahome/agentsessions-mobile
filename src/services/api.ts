@@ -218,6 +218,7 @@ export type StreamUpdate = {
   speaker?: string;
   manager?: string;
   exitCode?: number;
+  model?: string;
 };
 
 /**
@@ -280,6 +281,7 @@ export async function sendAndStream(
           manager: raw.payload?.manager,
           text: raw.payload?.text,
           exitCode: raw.payload?.exitCode,
+          model: raw.payload?.model,
         });
         continue;
       }

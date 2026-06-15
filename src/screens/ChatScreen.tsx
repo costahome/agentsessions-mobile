@@ -5,6 +5,15 @@ import { sendChatStreaming, getChatHistory, listChatThreads, newChatThread } fro
 import { useFocusEffect } from '@react-navigation/native';
 import MarkdownView from '../components/MarkdownView';
 
+// Prettify a model id for a small badge (claude-opus-4.8 -> Claude Opus 4.8).
+function formatModelName(id?: string): string {
+  if (!id) return '';
+  return String(id)
+    .replace(/-/g, ' ')
+    .replace(/\b([a-z])/g, (c) => c.toUpperCase())
+    .replace(/\bGpt\b/i, 'GPT');
+}
+
 interface Message {
   role: 'user' | 'assistant' | 'agent' | 'status';
   content: string;
@@ -12,6 +21,7 @@ interface Message {
   streaming?: boolean; // true while streaming text is accumulating
   speaker?: string;    // attribution: manager name or sub-agent name
   agentId?: string;    // sub-agent id (role === 'agent')
+  model?: string;      // model that served this assistant/agent message
 }
 
 export default function ChatScreen({ route, navigation }: any) {
@@ -86,6 +96,7 @@ export default function ChatScreen({ route, navigation }: any) {
     timestamp: m.timestamp,
     speaker: m.speaker,
     agentId: m.agentId,
+    model: m.model,
   });
 
   // Both agents and managers use threads. Agents resume from their copilot
@@ -156,7 +167,7 @@ export default function ChatScreen({ route, navigation }: any) {
           } else if (update.phase === 'result') {
             const speaker = update.speaker || update.agentId || 'Sub-agent';
             const text = update.text || '(no output)';
-            setMessages(prev => [...prev, { role: 'agent', content: text, speaker, agentId: update.agentId }]);
+            setMessages(prev => [...prev, { role: 'agent', content: text, speaker, agentId: update.agentId, model: update.model }]);
             setStatusText(`${name} is reviewing ${speaker}'s results…`);
           }
           // phase 'manager-final': the manager's answer arrives as the result.
@@ -176,12 +187,13 @@ export default function ChatScreen({ route, navigation }: any) {
 
       const finalContent = resp.output || resp.response || streamBuffer.current || 'No response';
       const finalSpeaker = isManager ? name : undefined;
+      const finalModel = resp.model;
       setMessages(prev => {
         const last = prev[prev.length - 1];
         if (last?.streaming) {
-          return [...prev.slice(0, -1), { role: 'assistant', content: finalContent, speaker: finalSpeaker }];
+          return [...prev.slice(0, -1), { role: 'assistant', content: finalContent, speaker: finalSpeaker, model: finalModel }];
         }
-        return [...prev, { role: 'assistant', content: finalContent, speaker: finalSpeaker }];
+        return [...prev, { role: 'assistant', content: finalContent, speaker: finalSpeaker, model: finalModel }];
       });
     } catch (err: any) {
       setMessages(prev => {
@@ -223,6 +235,7 @@ export default function ChatScreen({ route, navigation }: any) {
           <View style={[styles.bubble, styles.agentBubble]}>
             <MarkdownView>{item.content}</MarkdownView>
           </View>
+          {!!item.model && <Text style={styles.modelBadge}>🧠 {formatModelName(item.model)}</Text>}
         </View>
       );
     }
@@ -245,6 +258,7 @@ export default function ChatScreen({ route, navigation }: any) {
           )}
           <MarkdownView>{item.content}</MarkdownView>
         </View>
+        {!!item.model && !item.streaming && <Text style={styles.modelBadge}>🧠 {formatModelName(item.model)}</Text>}
       </View>
     );
   };
@@ -311,6 +325,7 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   managerHeader: { fontSize: 12, fontWeight: '700', color: c.accent, marginBottom: 3, marginLeft: 2 },
   agentWrap: { alignSelf: 'flex-start', maxWidth: '92%', marginBottom: 8, marginLeft: 16 },
   agentHeader: { fontSize: 12, fontWeight: '700', color: c.textSoft, marginBottom: 3, marginLeft: 2 },
+  modelBadge: { fontSize: 10, fontWeight: '600', color: c.accent, marginTop: 3, marginLeft: 4 },
   agentBubble: { alignSelf: 'flex-start', backgroundColor: c.accentSoft, borderWidth: 1, borderColor: c.border, borderStyle: 'dashed' },
   streamingBubble: { borderStyle: 'dashed', borderColor: c.accent, borderWidth: 1 },
   bubbleText: { fontSize: 15, lineHeight: 20 },
