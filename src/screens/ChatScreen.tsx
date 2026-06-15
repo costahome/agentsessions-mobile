@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Share } from 'react-native';
 import { useColors, Palette } from '../services/theme';
 import { sendChatStreaming, getChatHistory, listChatThreads, newChatThread } from '../services/api';
+import { useFocusEffect } from '@react-navigation/native';
 import MarkdownView from '../components/MarkdownView';
 
 interface Message {
@@ -23,6 +24,7 @@ export default function ChatScreen({ route, navigation }: any) {
   const [sending, setSending] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(route.params?.threadId || null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const streamBuffer = useRef('');
   const messagesRef = useRef<Message[]>([]);
@@ -78,10 +80,6 @@ export default function ChatScreen({ route, navigation }: any) {
     if (route.params?.threadId) setThreadId(route.params.threadId);
   }, [route.params?.threadId]);
 
-  useEffect(() => {
-    resolveAndLoad();
-  }, [threadId]);
-
   const mapMsg = (m: any): Message => ({
     role: m.role,
     content: m.content,
@@ -90,12 +88,15 @@ export default function ChatScreen({ route, navigation }: any) {
     agentId: m.agentId,
   });
 
-  const resolveAndLoad = async () => {
-    // Both agents and managers use threads. Agents resume from their copilot
-    // session; managers resume from the persisted attributed transcript.
+  // Both agents and managers use threads. Agents resume from their copilot
+  // session/DB transcript; managers resume from the persisted attributed
+  // transcript. We surface a loading indicator while the transcript is fetched
+  // so selecting a conversation never looks like a dead tap.
+  const resolveAndLoad = useCallback(async () => {
     let tid = threadId;
     if (!tid) {
       // No explicit thread — resume the most recent, or mint a fresh one.
+      setLoadingHistory(true);
       try {
         const list = await listChatThreads(targetId);
         const threads = list?.threads || [];
@@ -106,15 +107,35 @@ export default function ChatScreen({ route, navigation }: any) {
           tid = created?.threadId || null;
         }
       } catch {}
-      if (tid && tid !== threadId) { setThreadId(tid); return; } // re-runs effect
+      // Adopt the resolved thread; the effect re-runs and loads it (loading
+      // indicator stays up across the hop).
+      if (tid && tid !== threadId) { setThreadId(tid); return; }
     }
     if (tid) {
+      setLoadingHistory(true);
       try {
         const resp = await getChatHistory({ threadId: tid });
         if (resp.messages) setMessages(resp.messages.map(mapMsg));
       } catch {}
+      finally { setLoadingHistory(false); }
+    } else {
+      setLoadingHistory(false);
     }
-  };
+  }, [threadId, targetId, targetType]);
+
+  useEffect(() => {
+    resolveAndLoad();
+  }, [resolveAndLoad]);
+
+  // Returning to a blank chat (e.g. after navigating away) should always
+  // restore the most recent conversation, never show an empty thread.
+  useFocusEffect(
+    useCallback(() => {
+      if (!sending && messagesRef.current.length === 0) {
+        resolveAndLoad();
+      }
+    }, [resolveAndLoad, sending])
+  );
 
   const send = async () => {
     if (!input.trim() || sending) return;
@@ -238,7 +259,16 @@ export default function ChatScreen({ route, navigation }: any) {
         contentContainerStyle={styles.messageList}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
         keyboardDismissMode="interactive"
-        ListEmptyComponent={<Text style={styles.empty}>Start the conversation with {name}.</Text>}
+        ListEmptyComponent={
+          loadingHistory ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator size="large" color={c.accent} />
+              <Text style={styles.loadingText}>Loading conversation…</Text>
+            </View>
+          ) : (
+            <Text style={styles.empty}>Start the conversation with {name}.</Text>
+          )
+        }
       />
 
       {statusText && (
@@ -299,4 +329,6 @@ const makeStyles = (c: Palette) => StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center' },
   headerBtn: { color: c.accent, fontSize: 15, fontWeight: '600', marginLeft: 14 },
   empty: { textAlign: 'center', color: c.textMuted, fontSize: 14, marginTop: 60 },
+  loadingWrap: { alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 80 },
+  loadingText: { color: c.textMuted, fontSize: 14 },
 });
